@@ -21,6 +21,26 @@ In this exercise, you will:
 3. Have the agent **build a CLI**, then open a pull request.
 4. Add a **web dashboard**, **verify** the data through MCP, and **merge**.
 
+## Running the weather tracker
+
+The CLI and dashboard use Node.js 20+ and the local `weather.db` SQLite file.
+Install dependencies once with `npm install`.
+
+```bash
+node src/cli.js add "London"
+npm run list -- --limit 10
+npm run stats -- "London"
+npm start
+```
+
+Open [http://localhost:3000](http://localhost:3000) for the dashboard. Use the
+city field to fetch and save a new observation. The JSON endpoints are
+`GET /api/logs`, `GET /api/summary`, and `POST /api/refresh?city=NAME`.
+
+Unknown cities and Open-Meteo/network errors are reported as readable messages.
+`weather.db` is created in the project root on first use; set `WEATHER_DB_PATH`
+to use a different database file.
+
 ### What you'll end up with
 
 ```

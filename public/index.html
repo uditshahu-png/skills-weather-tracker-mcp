@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mona's Weather Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172033; background: #f3f6fb; }
+      body { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+      header, .panel { background: white; border-radius: 14px; padding: 1.25rem 1.5rem; box-shadow: 0 4px 18px #1720330d; }
+      header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+      h1 { margin: 0; font-size: 1.6rem; }
+      form { display: flex; gap: .5rem; }
+      input, button { font: inherit; border-radius: 8px; padding: .65rem .8rem; }
+      input { border: 1px solid #cbd5e1; min-width: 14rem; }
+      button { border: 0; color: white; background: #2563eb; cursor: pointer; }
+      button:disabled { opacity: .6; cursor: wait; }
+      #message { min-height: 1.5rem; color: #b42318; }
+      main { display: grid; gap: 1rem; margin-top: 1rem; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; }
+      .card { border-left: 4px solid #2563eb; background: #f8fafc; border-radius: 8px; padding: .9rem; }
+      .card h3 { margin: 0 0 .4rem; }
+      .card p { margin: .25rem 0; color: #475569; }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; text-align: left; }
+      th, td { padding: .7rem .5rem; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+      th { color: #475569; font-size: .85rem; }
+      canvas { max-height: 320px; }
+      @media (max-width: 600px) { body { padding: 1rem .6rem; } header { padding: 1rem; } input { min-width: 0; width: 100%; } form { width: 100%; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Mona's Weather Tracker</h1>
+        <p>Save a live weather observation for any city.</p>
+      </div>
+      <form id="city-form">
+        <label for="city-input" hidden>City</label>
+        <input id="city-input" name="city" placeholder="Enter a city" required>
+        <button id="submit-button" type="submit">Add / Refresh</button>
+      </form>
+    </header>
+    <p id="message" role="status" aria-live="polite"></p>
+    <main>
+      <section class="panel" aria-labelledby="summary-heading">
+        <h2 id="summary-heading">City summaries</h2>
+        <div id="summaries" class="cards"></div>
+      </section>
+      <section class="panel" aria-labelledby="chart-heading">
+        <h2 id="chart-heading">Recent temperatures</h2>
+        <canvas id="temperature-chart" aria-label="Recent temperatures by city"></canvas>
+        <p id="chart-unavailable" hidden>Chart.js could not be loaded. The weather logs are still available below.</p>
+      </section>
+      <section class="panel" aria-labelledby="logs-heading">
+        <h2 id="logs-heading">Recent logs</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>City</th><th>Country</th><th>Temperature</th><th>Humidity</th><th>Wind</th><th>Condition</th><th>Logged</th></tr></thead>
+            <tbody id="logs"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+      const form = document.querySelector("#city-form");
+      const message = document.querySelector("#message");
+      const button = document.querySelector("#submit-button");
+      let chart;
+
+      // Format a value for dashboard display.
+      function temperature(value) {
+        return `${Number(value).toFixed(1)} °C`;
+      }
+
+      // Render summaries, logs, and the temperature chart from the API data.
+      function renderDashboard(logs, summaries) {
+        const cards = document.querySelector("#summaries");
+        cards.replaceChildren();
+        for (const summary of summaries) {
+          const card = document.createElement("article");
+          card.className = "card";
+          const title = document.createElement("h3");
+          title.textContent = summary.city;
+          const latest = document.createElement("p");
+          latest.textContent = `Latest: ${temperature(summary.latestTemperature)}`;
+          const average = document.createElement("p");
+          average.textContent = `Average: ${temperature(summary.averageTemperature)}`;
+          const count = document.createElement("p");
+          count.textContent = `${summary.logCount} log(s)`;
+          card.append(title, latest, average, count);
+          cards.append(card);
+        }
+
+        const body = document.querySelector("#logs");
+        body.replaceChildren();
+        for (const log of logs) {
+          const row = body.insertRow();
+          const values = [
+            log.city, log.country ?? "—", temperature(log.temperatureC),
+            `${log.humidity}%`, `${Number(log.windKmh).toFixed(1)} km/h`,
+            log.condition, new Date(`${log.createdAt.replace(" ", "T")}Z`).toLocaleString(),
+          ];
+          for (const value of values) row.insertCell().textContent = value;
+        }
+
+        if (!window.Chart) {
+          document.querySelector("#chart-unavailable").hidden = false;
+          return;
+        }
+        const labels = logs.map((log) => new Date(`${log.createdAt.replace(" ", "T")}Z`).toLocaleString());
+        const cities = [...new Set(logs.map((log) => log.city))];
+        const colors = ["#2563eb", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
+        const datasets = cities.map((city, index) => ({
+          label: city,
+          data: logs.map((log) => log.city === city ? log.temperatureC : null),
+          borderColor: colors[index % colors.length],
+          backgroundColor: colors[index % colors.length],
+          tension: 0.25,
+          spanGaps: true,
+        }));
+        if (chart) chart.destroy();
+        chart = new Chart(document.querySelector("#temperature-chart"), {
+          type: "line",
+          data: { labels, datasets },
+          options: { responsive: true, scales: { y: { title: { display: true, text: "Temperature (°C)" } } } },
+        });
+      }
+
+      // Load both dashboard API resources and render the current data.
+      async function loadDashboard() {
+        const [logsResponse, summaryResponse] = await Promise.all([
+          fetch("/api/logs"), fetch("/api/summary"),
+        ]);
+        if (!logsResponse.ok || !summaryResponse.ok) throw new Error("Could not load dashboard data.");
+        const [{ logs }, { summaries }] = await Promise.all([
+          logsResponse.json(), summaryResponse.json(),
+        ]);
+        renderDashboard(logs, summaries);
+      }
+
+      // Save a fresh observation for the submitted city and refresh the dashboard.
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const city = document.querySelector("#city-input").value.trim();
+        if (!city) return;
+        button.disabled = true;
+        message.textContent = `Fetching weather for ${city}…`;
+        try {
+          const response = await fetch(`/api/refresh?city=${encodeURIComponent(city)}`, { method: "POST" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error ?? "Could not refresh weather.");
+          message.textContent = `Saved weather for ${result.weather.city}.`;
+          await loadDashboard();
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      // Load saved observations on first page view and display any load failure.
+      loadDashboard().catch((error) => { message.textContent = error.message; });
+    </script>
+  </body>
+</html>
